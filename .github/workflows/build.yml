@@ -1,0 +1,36 @@
+name: Bygg DOSERING
+
+on:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build_mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bygg
+        run: |
+          cmake -B build -G Xcode -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --config Release
+      - name: Spara Mac-filer
+        uses: actions/upload-artifact@v4
+        with:
+          name: DOSERING-macOS
+          path: |
+            build/Dosering_artefacts/Release/VST3/DOSERING.vst3
+            build/Dosering_artefacts/Release/AU/DOSERING.component
+
+  build_win:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bygg
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --config Release
+      - name: Spara Windows-filer
+        uses: actions/upload-artifact@v4
+        with:
+          name: DOSERING-Windows
+          path: build/Dosering_artefacts/Release/VST3/DOSERING.vst3
