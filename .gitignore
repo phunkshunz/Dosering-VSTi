@@ -1,0 +1,10 @@
+build/
+build-*/
+dist/
+tests/engine_test
+tests/et_dbg
+tests/dbg*
+tests/*.wav
+.DS_Store
+*.user
+.vs/

@@ -1,36 +1,140 @@
-name: Bygg DOSERING
+name: Bygg KOLDBARAREN
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main ]
+    tags: [ 'v*' ]
+  release:
+    types: [ published ]   # Publicera en release pa GitHub -> zip-filerna bifogas automatiskt
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
-  build_mac:
-    runs-on: macos-latest
+  macos:
+    name: macOS (Universal)
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
-      - name: Bygg
-        run: |
-          cmake -B build -G Xcode -DCMAKE_BUILD_TYPE=Release
-          cmake --build build --config Release
-      - name: Spara Mac-filer
-        uses: actions/upload-artifact@v4
-        with:
-          name: DOSERING-macOS
-          path: |
-            build/Dosering_artefacts/Release/VST3/DOSERING.vst3
-            build/Dosering_artefacts/Release/AU/DOSERING.component
 
-  build_win:
+      - name: Konfigurera
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Bygg
+        run: cmake --build build --config Release --parallel 4
+
+      - name: Testa ljudmotorn
+        run: |
+          clang++ -O2 -std=c++17 tests/engine_test.cpp -o build/engine_test
+          cd build && ./engine_test
+
+      - name: Signera (ad hoc) och packa
+        run: |
+          ART=build/Koldbararen_artefacts/Release
+          mkdir -p dist/KOLDBARAREN-macOS
+          cp -R "$ART/VST3/KOLDBARAREN.vst3" dist/KOLDBARAREN-macOS/
+          cp -R "$ART/AU/KOLDBARAREN.component" dist/KOLDBARAREN-macOS/
+          codesign --force --deep -s - dist/KOLDBARAREN-macOS/KOLDBARAREN.vst3
+          codesign --force --deep -s - dist/KOLDBARAREN-macOS/KOLDBARAREN.component
+          cp installer/installera.command dist/KOLDBARAREN-macOS/
+          chmod +x dist/KOLDBARAREN-macOS/installera.command
+          cp installer/LAS_MIG.txt dist/KOLDBARAREN-macOS/
+          lipo -info dist/KOLDBARAREN-macOS/KOLDBARAREN.vst3/Contents/MacOS/KOLDBARAREN
+          cd dist && ditto -c -k --keepParent KOLDBARAREN-macOS KOLDBARAREN-macOS.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          retention-days: 3
+          name: KOLDBARAREN-macOS
+          path: dist/KOLDBARAREN-macOS.zip
+
+
+  windows:
+    name: Windows (VST3)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Konfigurera
+        run: cmake -B build -A x64
+
       - name: Bygg
+        run: cmake --build build --config Release --parallel 4
+
+      - name: Packa
+        shell: pwsh
         run: |
-          cmake -B build -DCMAKE_BUILD_TYPE=Release
-          cmake --build build --config Release
-      - name: Spara Windows-filer
+          New-Item -ItemType Directory -Force dist/KOLDBARAREN-Windows | Out-Null
+          Copy-Item -Recurse build/Koldbararen_artefacts/Release/VST3/KOLDBARAREN.vst3 dist/KOLDBARAREN-Windows/
+          Copy-Item installer/installera.bat dist/KOLDBARAREN-Windows/
+          Copy-Item installer/LAS_MIG.txt dist/KOLDBARAREN-Windows/
+          Compress-Archive -Path dist/KOLDBARAREN-Windows -DestinationPath dist/KOLDBARAREN-Windows.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          retention-days: 3
+          name: KOLDBARAREN-Windows
+          path: dist/KOLDBARAREN-Windows.zip
+
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Installera beroenden
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libasound2-dev libjack-jackd2-dev ladspa-sdk libcurl4-openssl-dev libfreetype6-dev libfontconfig1-dev libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev libxrender-dev libwebkit2gtk-4.0-dev libglu1-mesa-dev mesa-common-dev
+
+      - name: Konfigurera
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Bygg
+        run: cmake --build build --config Release --target Koldbararen_VST3 Koldbararen_LV2 -j 4
+
+      - name: Paketera
+        run: |
+          mkdir -p dist/KOLDBARAREN
+          for t in Koldbararen; do
+            cp -R build/${t}_artefacts/Release/VST3/*.vst3 dist/KOLDBARAREN/
+            cp -R build/${t}_artefacts/Release/LV2/*.lv2 dist/KOLDBARAREN/
+          done
+          cp scripts/installera-linux.sh dist/KOLDBARAREN/
+          chmod +x dist/KOLDBARAREN/installera-linux.sh
+          cd dist && zip -r -y KOLDBARAREN-Linux.zip KOLDBARAREN
+
+      - name: Ladda upp
         uses: actions/upload-artifact@v4
         with:
-          name: DOSERING-Windows
-          path: build/Dosering_artefacts/Release/VST3/DOSERING.vst3
+          retention-days: 3
+          name: KOLDBARAREN-Linux
+          path: dist/KOLDBARAREN-Linux.zip
+
+  # Varje bygge på main blir en release, så att
+  # .../releases/latest/download/KOLDBARAREN-macOS.zip alltid ger senaste versionen.
+  release:
+    if: always() && github.event_name == 'push' && needs.macos.result == 'success'
+    needs: [macos, windows, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Skapa release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('koldbararen-bygge-{0}', github.run_number) }}
+          name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('KOLDBARAREN bygge {0}', github.run_number) }}
+          target_commitish: ${{ github.sha }}
+          make_latest: true
+          body_path: RELEASE.md
+          files: |
+            dist/KOLDBARAREN-macOS.zip
+            dist/KOLDBARAREN-Windows.zip
+            dist/KOLDBARAREN-Linux.zip
+

@@ -1,0 +1,16 @@
+KOLDBARAREN - MASKINHALLEN / Phunkshunz AUDIO
+Botten-maskinen: ritad duck, transient, faslast sub och subdist.
+
+INSTALLERA
+- Mac: dubbelklicka installera.command (hogerklicka > Oppna forsta gangen).
+- Windows: dubbelklicka installera.bat.
+- Starta om din DAW och leta efter KOLDBARAREN under effekter.
+
+SA HAR ANVANDER DU DEN
+- Lagg KOLDBARAREN pa basen (eller hela botten-bussen).
+- KALLA = TAKT: den duckar pa varje fjardedel i ditt tempo. Inget mer behovs.
+- KALLA = SIDECHAIN: skicka kicken till pluginets sidokedja (ingang 2).
+  Da duckar den exakt efter kicken och GILJOTINEN startar suben nar kicken slapper.
+- Rita KURVAN med musen. Dubbelklicka for att borja om.
+- SUBNIVA over noll satter pa giljotinen: en ren sub i fas efter varje kick.
+- SUBDIST gor att basen hors i sma hogtalare.
