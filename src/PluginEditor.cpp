@@ -4,7 +4,7 @@ using namespace juce;
 
 namespace
 {
-constexpr int W = 300, H = 540;
+constexpr int W = 300, H = 580;
 String U (const char* s) { return sprak::tr (String::fromUTF8 (s)); }
 }
 
@@ -25,6 +25,7 @@ DosLnF::DosLnF()
 void DosLnF::drawRotarySlider (Graphics& g, int x, int y, int w, int h, float pos, float a0, float a1, Slider& s)
 {
     const auto area = Rectangle<float> ((float) x, (float) y, (float) w, (float) h);
+    if (s.getProperties().contains ("mini")) { mini::draw (g, area, pos, a0, a1, s); return; }
     const float size = jmin (area.getWidth(), area.getHeight());
     const auto c = area.getCentre();
     const float ringR = size * 0.5f - 8.0f;
@@ -144,6 +145,21 @@ DoseringPanel::DoseringPanel (DoseringProcessor& p, std::function<void()> bytSpr
     mix.setDoubleClickReturnValue (true, 1.0);
     ut.setDoubleClickReturnValue (true, 0.0);
 
+    // karaktären: de små rattarna. Övre raden formar pumpen, nedre raden suben och rivet.
+    auto procent = [] (double v) { return String (roundToInt (v * 100.0)); };
+    mini::setup (minis[0], *this, proc.apvts, "duck",  U ("DUCK"),  U ("Hur djupt ljudet duckar när den stora ratten är uppe."), procent);
+    mini::setup (minis[1], *this, proc.apvts, "langd", U ("LÄNGD"), U ("Hur stor del av takten pumpen tar innan ljudet är tillbaka."), procent);
+    mini::setup (minis[2], *this, proc.apvts, "form",  U ("FORM"),  U ("Pumpens böj. Lågt kommer tillbaka direkt, högt ligger kvar nere och kommer snabbt på slutet."),
+                 [] (double v) { return String (v, 1); });
+    mini::setup (minis[3], *this, proc.apvts, "anslag", U ("ANSLAG"), U ("Vänster mjukar upp slaget i ljudet, höger gör det hårdare."),
+                 [] (double v) { return (v > 0.005 ? "+" : "") + String (roundToInt (v * 100.0)); }, true);
+    mini::setup (minis[4], *this, proc.apvts, "sub",   U ("SUB"),   U ("Hur mycket sub som fylls på i luckan efter kicken."), procent);
+    mini::setup (minis[5], *this, proc.apvts, "subhz", U ("SUBTON"), U ("Subens tonhöjd. Stäm den mot låtens grundton."),
+                 [] (double v) { return String (v, 1) + " Hz"; });
+    mini::setup (minis[6], *this, proc.apvts, "subfall", U ("FALL"), U ("Hur länge suben klingar innan den dör ut."),
+                 [] (double v) { return String (roundToInt (v * 1000.0)) + " ms"; });
+    mini::setup (minis[7], *this, proc.apvts, "dist",  U ("RIV"),   U ("Hur mycket botten rivs upp av mättning högst upp på den stora ratten."), procent);
+
     const char* namnen[4] = { "1/4", "1/8", "OFFBEAT", "LYSSNA" };
     const char* tipsen[4] = { "Pumpar på varje fjärdedel, i takt med DAW:en.", "Pumpar på varje åttondel.",
                               "Pumpar mitt emellan slagen.", "Lyssnar efter kicken i ljudet och pumpar på den. Behöver ingen takt." };
@@ -250,11 +266,16 @@ void DoseringPanel::resized()
     next.setBounds (foot.removeFromRight (44));
     namn.setBounds (foot);
 
-    knobArea = r.removeFromTop (232);
-    knob.setBounds (knobArea.withSizeKeepingCentre (224, 224));
+    knobArea = r.removeFromTop (178);
+    knob.setBounds (knobArea.withSizeKeepingCentre (172, 172));
     lampArea = r.removeFromTop (26);
 
-    auto modes = r.removeFromTop (44).reduced (14, 0);
+    miniArea = r.removeFromTop (116).reduced (10, 0);
+    mini::layoutRow (minis, 4, miniArea.withHeight (58));
+    mini::layoutRow (minis + 4, 4, miniArea.withTrimmedTop (58));
+    r.removeFromTop (6);
+
+    auto modes = r.removeFromTop (40).reduced (14, 0);
     const int bw = (modes.getWidth() - 15) / 4;
     for (int i = 0; i < 4; ++i) { lage[i].setBounds (modes.removeFromLeft (bw)); modes.removeFromLeft (5); }
 
@@ -305,6 +326,8 @@ void DoseringPanel::paint (Graphics& g)
         g.drawText (text, x0 + 14, cellR.getY(), tw + 4, cellR.getHeight(), Justification::centredLeft, false);
     }
 
+    mini::paintLabels (g, minis, 8);
+
     // de små reglagen: namn till vänster, värde till höger
     auto rad = [&g] (Rectangle<int> r, const String& namnText, const String& varde)
     {
@@ -327,7 +350,7 @@ void DoseringPanel::paintOverChildren (Graphics& g)
     if (gr < 0.02f) return;
     const auto b = knob.getBounds().toFloat();
     const auto c = b.getCentre();
-    const float r = jmin (b.getWidth(), b.getHeight()) * 0.5f - 20.0f;
+    const float r = jmin (b.getWidth(), b.getHeight()) * 0.5f - 18.0f;
     const float a0 = MathConstants<float>::pi * 1.25f, a1 = MathConstants<float>::pi * 2.75f;
     Path arc;
     arc.addCentredArc (c.x, c.y, r, r, 0.0f, a0, a0 + gr * (a1 - a0), true);

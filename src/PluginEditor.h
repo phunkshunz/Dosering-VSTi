@@ -10,7 +10,7 @@
  #define DOS_HAS_FONTS 0
 #endif
 
-// DOSERING · MASKINHALLEN ONE KNOB. Smal panel 300 x 540: en stor ratt som doserar botten, lampor som visar
+// DOSERING · MASKINHALLEN ONE KNOB. Smal panel 300 x 580: en stor ratt som doserar botten, lampor som visar
 // vad som händer, fyra lägen, två små reglage och presets. Grundschemat: kolgrå, natriumorange och turkos.
 namespace stil
 {
@@ -50,6 +50,8 @@ inline juce::Font mono (float size)
 }
 } // namespace stil
 
+#include "Mini.h"
+
 class DosLnF : public juce::LookAndFeel_V4
 {
 public:
@@ -80,13 +82,14 @@ private:
 
     DoseringProcessor& proc;
     juce::Slider knob, mix, ut;
+    mini::Knob minis[8];
     juce::TextButton lage[4], allt, slumpa, prev, next, namn;
     sprak::Knapp sprakKnapp;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> knobAtt, mixAtt, utAtt;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> alltAtt;
     float lDuck = 0, lSub = 0, lDist = 0;
     int shownPreset = -1;
-    juce::Rectangle<int> knobArea, lampArea, mixRow, utRow;
+    juce::Rectangle<int> knobArea, lampArea, mixRow, utRow, miniArea;
 };
 
 class DoseringEditor : public juce::AudioProcessorEditor
