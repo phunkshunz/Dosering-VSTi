@@ -1,83 +1,115 @@
-name: Bygg KOLDBARAREN
+name: Bygg DOSERING
 
 on:
   push:
-    branches: [ main ]
-    tags: [ 'v*' ]
-  release:
-    types: [ published ]   # Publicera en release pa GitHub -> zip-filerna bifogas automatiskt
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: write # behövs för att skapa releaser
 
 jobs:
+  # Manualen görs till PDF av Chrome och läggs i zipparna.
+  manual:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Gör PDF-manualen
+        run: |
+          mkdir -p dist
+          google-chrome --headless=new --no-sandbox --disable-gpu --no-pdf-header-footer \
+            --virtual-time-budget=20000 --run-all-compositor-stages-before-draw \
+            --print-to-pdf="$PWD/dist/DOSERING-Manual.pdf" "file://$PWD/manual/manual.html"
+          test -s dist/DOSERING-Manual.pdf
+
+      - name: Testa motorn
+        run: |
+          g++ -std=c++17 -O2 -Isrc tests/engine_test.cpp -o engine_test
+          ./engine_test
+
+      - name: Ladda upp
+        uses: actions/upload-artifact@v4
+        with:
+          name: DOSERING-Manual
+          path: dist/DOSERING-Manual.pdf
+
   macos:
-    name: macOS (Universal)
+    needs: manual
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
 
       - name: Konfigurera
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+        run: >
+          cmake -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
+          -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
 
       - name: Bygg
-        run: cmake --build build --config Release --parallel 4
+        run: cmake --build build --config Release -j 3
 
-      - name: Testa ljudmotorn
-        run: |
-          clang++ -O2 -std=c++17 tests/engine_test.cpp -o build/engine_test
-          cd build && ./engine_test
-
-      - name: Signera (ad hoc) och packa
-        run: |
-          ART=build/Koldbararen_artefacts/Release
-          mkdir -p dist/KOLDBARAREN-macOS
-          cp -R "$ART/VST3/KOLDBARAREN.vst3" dist/KOLDBARAREN-macOS/
-          cp -R "$ART/AU/KOLDBARAREN.component" dist/KOLDBARAREN-macOS/
-          codesign --force --deep -s - dist/KOLDBARAREN-macOS/KOLDBARAREN.vst3
-          codesign --force --deep -s - dist/KOLDBARAREN-macOS/KOLDBARAREN.component
-          cp installer/installera.command dist/KOLDBARAREN-macOS/
-          chmod +x dist/KOLDBARAREN-macOS/installera.command
-          cp installer/LAS_MIG.txt dist/KOLDBARAREN-macOS/
-          lipo -info dist/KOLDBARAREN-macOS/KOLDBARAREN.vst3/Contents/MacOS/KOLDBARAREN
-          cd dist && ditto -c -k --keepParent KOLDBARAREN-macOS KOLDBARAREN-macOS.zip
-
-      - uses: actions/upload-artifact@v4
+      - name: Hämta manualen
+        uses: actions/download-artifact@v4
         with:
-          retention-days: 3
-          name: KOLDBARAREN-macOS
-          path: dist/KOLDBARAREN-macOS.zip
+          name: DOSERING-Manual
+          path: dist/DOSERING
 
+      - name: Paketera
+        run: |
+          ART=build/Dosering_artefacts/Release
+          mkdir -p dist/DOSERING
+          cp -R "$ART/VST3/DOSERING.vst3" dist/DOSERING/
+          cp -R "$ART/AU/DOSERING.component" dist/DOSERING/
+                    cp scripts/installera.command dist/DOSERING/
+          chmod +x dist/DOSERING/installera.command
+          for b in dist/DOSERING/DOSERING.vst3 dist/DOSERING/DOSERING.component; do
+            codesign --force --deep --sign - "$b"
+          done
+          cd dist && ditto -c -k --keepParent DOSERING DOSERING-macOS.zip
+
+      - name: Ladda upp
+        uses: actions/upload-artifact@v4
+        with:
+          name: DOSERING-macOS
+          path: dist/DOSERING-macOS.zip
 
   windows:
-    name: Windows (VST3)
-    runs-on: windows-latest
+    needs: manual
+    runs-on: windows-2022
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
       - name: Konfigurera
-        run: cmake -B build -A x64
+        run: cmake -B build -G "Visual Studio 17 2022" -A x64
 
       - name: Bygg
-        run: cmake --build build --config Release --parallel 4
+        run: cmake --build build --config Release --target Dosering_VST3 -j 3
 
-      - name: Packa
+      - name: Hämta manualen
+        uses: actions/download-artifact@v4
+        with:
+          name: DOSERING-Manual
+          path: dist/DOSERING
+
+      - name: Paketera
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force dist/KOLDBARAREN-Windows | Out-Null
-          Copy-Item -Recurse build/Koldbararen_artefacts/Release/VST3/KOLDBARAREN.vst3 dist/KOLDBARAREN-Windows/
-          Copy-Item installer/installera.bat dist/KOLDBARAREN-Windows/
-          Copy-Item installer/LAS_MIG.txt dist/KOLDBARAREN-Windows/
-          Compress-Archive -Path dist/KOLDBARAREN-Windows -DestinationPath dist/KOLDBARAREN-Windows.zip
+          Copy-Item -Recurse "build/Dosering_artefacts/Release/VST3/DOSERING.vst3" "dist/DOSERING/"
+          Compress-Archive -Path "dist/DOSERING" -DestinationPath "dist/DOSERING-Windows.zip"
 
-      - uses: actions/upload-artifact@v4
+      - name: Ladda upp
+        uses: actions/upload-artifact@v4
         with:
-          retention-days: 3
-          name: KOLDBARAREN-Windows
-          path: dist/KOLDBARAREN-Windows.zip
+          name: DOSERING-Windows
+          path: dist/DOSERING-Windows.zip
 
   linux:
+    needs: manual
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -91,35 +123,38 @@ jobs:
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release
 
       - name: Bygg
-        run: cmake --build build --config Release --target Koldbararen_VST3 Koldbararen_LV2 -j 4
+        run: cmake --build build --config Release --target Dosering_VST3 Dosering_LV2 -j 4
+
+      - name: Hämta manualen
+        uses: actions/download-artifact@v4
+        with:
+          name: DOSERING-Manual
+          path: dist/DOSERING
 
       - name: Paketera
         run: |
-          mkdir -p dist/KOLDBARAREN
-          for t in Koldbararen; do
-            cp -R build/${t}_artefacts/Release/VST3/*.vst3 dist/KOLDBARAREN/
-            cp -R build/${t}_artefacts/Release/LV2/*.lv2 dist/KOLDBARAREN/
+          mkdir -p dist/DOSERING
+          for t in Dosering; do
+            cp -R build/${t}_artefacts/Release/VST3/*.vst3 dist/DOSERING/
+            cp -R build/${t}_artefacts/Release/LV2/*.lv2 dist/DOSERING/
           done
-          cp scripts/installera-linux.sh dist/KOLDBARAREN/
-          chmod +x dist/KOLDBARAREN/installera-linux.sh
-          cd dist && zip -r -y KOLDBARAREN-Linux.zip KOLDBARAREN
+          cp scripts/installera-linux.sh dist/DOSERING/
+          chmod +x dist/DOSERING/installera-linux.sh
+          cd dist && zip -r -y DOSERING-Linux.zip DOSERING
 
       - name: Ladda upp
         uses: actions/upload-artifact@v4
         with:
-          retention-days: 3
-          name: KOLDBARAREN-Linux
-          path: dist/KOLDBARAREN-Linux.zip
+          name: DOSERING-Linux
+          path: dist/DOSERING-Linux.zip
 
   # Varje bygge på main blir en release, så att
-  # .../releases/latest/download/KOLDBARAREN-macOS.zip alltid ger senaste versionen.
+  # .../releases/latest/download/DOSERING-macOS.zip alltid ger senaste versionen.
   release:
     if: always() && github.event_name == 'push' && needs.macos.result == 'success'
-    needs: [macos, windows, linux]
+    needs: [manual, macos, windows, linux]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
       - uses: actions/download-artifact@v4
         with:
           path: dist
@@ -128,13 +163,13 @@ jobs:
       - name: Skapa release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('koldbararen-bygge-{0}', github.run_number) }}
-          name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('KOLDBARAREN bygge {0}', github.run_number) }}
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('dosering-bygge-{0}', github.run_number) }}
+          name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('DOSERING bygge {0}', github.run_number) }}
           target_commitish: ${{ github.sha }}
           make_latest: true
-          body_path: RELEASE.md
+          body: "Mac: ladda ner DOSERING-macOS.zip och installera enligt README. Windows: DOSERING-Windows.zip (VST3). Linux: DOSERING-Linux.zip (VST3 + LV2). Manualen ligger i zipparna och som PDF här."
           files: |
-            dist/KOLDBARAREN-macOS.zip
-            dist/KOLDBARAREN-Windows.zip
-            dist/KOLDBARAREN-Linux.zip
-
+            dist/DOSERING-macOS.zip
+            dist/DOSERING-Windows.zip
+            dist/DOSERING-Linux.zip
+            dist/DOSERING-Manual.pdf

@@ -95,6 +95,8 @@ struct Params
     bool duckOnlyLow = true;     // DUCKA: BARA BOTTEN eller ALLT
     float threshold = 0.35f;     // KÄNSLIGHET för SIDECHAIN/SJÄLV, andel av senaste toppen
     float kickMs = 140.f;        // KICKLÄNGD i TAKT-läget
+    float gridBeats = 1.f;       // TAKT-läget: hur ofta kurvan startar, i fjärdedelar (1 = 1/4, 0.5 = 1/8)
+    float gridOffset = 0.f;      // TAKT-läget: förskjutning i fjärdedelar (0.5 = offbeat)
     // TRANSIENT
     float attack = 0.f;          // ANSLAG -1..+1
     float sustain = 0.f;         // SVANS -1..+1
@@ -157,7 +159,7 @@ public:
         subGate = 0.f;
         curveGain = 1.f;
         smoothGain = 1.f;
-        lastBeat = -1.0;
+        lastBeat = -1.0e9;
     }
 
     void setParams (const Params& np)
@@ -204,8 +206,9 @@ public:
                 if (isPlaying)
                 {
                     const double beatPos = ppq + (double) i / samplesPerBeat;
-                    const double b = std::floor (beatPos + 1.0e-9);
-                    if (b != lastBeat) { trigger = lastBeat > -1.0 || beatPos - b < 0.01; lastBeat = b; }
+                    const double grid = (beatPos - (double) p.gridOffset) / (double) std::max (0.0625f, p.gridBeats);
+                    const double b = std::floor (grid + 1.0e-9);
+                    if (b != lastBeat) { trigger = lastBeat > -1.0e8 || grid - b < 0.01; lastBeat = b; }
                 }
                 if (trigger) { kickOn = true; sinceKickStart = 0.f; }
                 if (kickOn && sinceKickStart >= kickLen) { kickOn = false; kickEnded = true; }
@@ -298,7 +301,8 @@ public:
                     }
                 }
                 if (kickOn && subGate <= 0.f) subEnv = 0.f;
-                subOut = s * p.subLevel * 0.8f;
+                // suben följer ljudet: tystnar ljudet in (breakdown) tystnar suben också
+                subOut = s * p.subLevel * 0.8f * clamp01 (envSlow * 12.f);
                 wetL += subOut;
                 wetR += subOut;
             }
@@ -339,7 +343,7 @@ private:
 
     Params p;
     float fs = 48000.f;
-    double bpm = 124.0, ppq = 0.0, lastBeat = -1.0;
+    double bpm = 124.0, ppq = 0.0, lastBeat = -1.0e9;
     bool isPlaying = false;
 
     LR4 split[2];
